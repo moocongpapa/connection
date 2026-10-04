@@ -7,7 +7,10 @@
       "installCommand": "npm ci",
       "buildCommand": "npm run build",
       "outputDirectory": "dist",
-      "rewrites": [{ "source": "/room/:path*", "destination": "/index.html" }]
+      "rewrites": [
+        { "source": "/", "destination": "/index.html" },
+        { "source": "/room/:path*", "destination": "/index.html" }
+      ]
     },
     "api": {
       "root": "server",
