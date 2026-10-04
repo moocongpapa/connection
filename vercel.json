@@ -23,8 +23,8 @@
     }
   },
   "rewrites": [
-    { "source": "/socket.io/:path*", "destination": { "service": "api", "path": "/socket.io/connect" } },
-    { "source": "/api/:path*", "destination": { "service": "api" } },
-    { "source": "/:path*", "destination": { "service": "web" } }
+    { "source": "/socket.io/(.*)", "destination": { "service": "api", "path": "/socket.io/connect" } },
+    { "source": "/api/(.*)", "destination": { "service": "api" } },
+    { "source": "/(.*)", "destination": { "service": "web" } }
   ]
 }
