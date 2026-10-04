@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { compressImage } from '../../utils/imageUtils';
 import { ProfileData } from '../../types';
+import { writeStored } from '../../utils/storage';
 
 interface ProfileSetupProps {
   onSubmit: (profile: ProfileData) => void;
   buttonText: string;
+  pending?: boolean;
+  connected?: boolean;
 }
 
-const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSubmit, buttonText }) => {
+const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSubmit, buttonText, pending = false, connected = true }) => {
   const [nickname, setNickname] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,6 +33,7 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSubmit, buttonText }) => 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 15 * 1024 * 1024) { alert('사진은 15MB 이하로 선택해주세요.'); return; }
 
     try {
       setIsLoading(true);
@@ -59,19 +63,19 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSubmit, buttonText }) => 
     };
 
     // Save to localStorage
-    localStorage.setItem('connection_profile', JSON.stringify(profileData));
+    writeStored('connection_profile', profileData);
 
     onSubmit(profileData);
   };
 
   return (
-    <div className="w-full max-w-md mx-auto bg-white dark:bg-gray-800 rounded-3xl shadow-xl p-8 border border-gray-100 dark:border-gray-700">
+    <div className="w-full max-w-md mx-auto bg-white dark:bg-gray-800 rounded-3xl shadow-xl p-5 sm:p-8 border border-gray-100 dark:border-gray-700">
       <h2 className="text-2xl font-bold text-center mb-8 text-gray-800 dark:text-white">프로필 설정</h2>
       
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="flex flex-col items-center">
-          <div 
-            className="w-32 h-32 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center cursor-pointer overflow-hidden border-4 border-primary-100 dark:border-gray-600 relative group shadow-inner"
+          <button type="button" aria-label="프로필 사진 선택"
+            className="w-24 h-24 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden border-4 border-primary-100 dark:border-gray-600 relative group shadow-inner"
             onClick={() => fileInputRef.current?.click()}
           >
             {photoUrl ? (
@@ -88,7 +92,7 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSubmit, buttonText }) => 
               </svg>
               <span className="text-white text-[11px] mt-1 font-medium">사진 변경</span>
             </div>
-          </div>
+          </button>
           <input 
             type="file" 
             ref={fileInputRef} 
@@ -108,7 +112,7 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSubmit, buttonText }) => 
             id="nickname"
             value={nickname}
             onChange={(e) => setNickname(e.target.value.slice(0, 20))}
-            className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white transition-colors text-sm"
+            className="form-input"
             placeholder="닉네임을 입력하세요 (최대 20자)"
             maxLength={20}
           />
@@ -116,10 +120,10 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSubmit, buttonText }) => 
 
         <button
           type="submit"
-          disabled={isLoading || !nickname.trim()}
+          disabled={pending || !connected || isLoading || !nickname.trim()}
           className="w-full py-3.5 px-4 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-base"
         >
-          {isLoading ? '처리 중...' : buttonText}
+          {pending ? '모임에 연결하는 중...' : !connected ? '서버에 연결하는 중...' : isLoading ? '사진 처리 중...' : buttonText}
         </button>
       </form>
     </div>

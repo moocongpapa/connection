@@ -9,6 +9,11 @@ build/
 .env
 .env.local
 .env.*.local
+.data/
+.vercel/
+*.tsbuildinfo
+client/vite.config.js
+client/vite.config.d.ts
 
 # IDE
 .vscode/

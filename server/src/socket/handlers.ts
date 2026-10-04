@@ -1,162 +1,126 @@
-import { Server, Socket } from 'socket.io';
-import { RoomStore, Member, Location } from '../models/Room.js';
-import * as events from './events.js';
-import { scheduleCleanup, cancelCleanup } from '../utils/roomCleanup.js';
+import { createHash } from 'node:crypto';
+import type { Server, Socket } from 'socket.io';
+import { RoomStore, MAX_LOCATION_AGE, type Location, type MeetingPoint, type StoredMember } from '../models/Room.js';
 
-export function registerSocketHandlers(io: Server, socket: Socket, roomStore: RoomStore) {
-  
-  socket.on(events.ROOM_CREATE, (data: { userId?: string; nickname: string; photoBase64: string; location?: Location }) => {
-    try {
-      const room = roomStore.createRoom();
-      const userId = data.userId || socket.id;
-      const member: Member = {
-        id: userId,
-        socketId: socket.id,
-        nickname: data.nickname,
-        photoBase64: data.photoBase64,
-        location: data.location || null,
-        isSharing: true,
-        isOnline: true,
-        joinedAt: Date.now(),
-        lastUpdate: Date.now(),
-      };
-      
-      roomStore.upsertMember(room.id, member);
-      socket.join(room.id);
-      
-      socket.emit(events.ROOM_CREATED, { roomId: room.id });
-      socket.emit(events.MEMBER_LIST, [member]);
-
-      console.log(`[Room Create] Room ${room.id} created by ${data.nickname} (User: ${userId}, Socket: ${socket.id})`);
-    } catch (error) {
-      console.error('[Room Create Error]', error);
-      socket.emit(events.ROOM_ERROR, { message: 'Failed to create room.' });
-    }
-  });
-
-  socket.on(events.ROOM_JOIN, (data: { roomId: string; userId?: string; nickname: string; photoBase64: string; location?: Location }) => {
-    const { roomId, nickname, photoBase64, location } = data;
-    
-    if (!roomStore.roomExists(roomId)) {
-      socket.emit(events.ROOM_ERROR, { message: 'Room does not exist.' });
-      return;
-    }
-
-    const userId = data.userId || socket.id;
-    const member: Member = {
-      id: userId,
-      socketId: socket.id,
-      nickname,
-      photoBase64,
-      location: location || null,
-      isSharing: true,
-      isOnline: true,
-      joinedAt: Date.now(),
-      lastUpdate: Date.now(),
+type Ack = (response: { ok: boolean; room?: unknown; message?: string }) => void;
+const validRoomId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(value);
+const coordinate = (lat: unknown, lng: unknown) =>
+  typeof lat === 'number' && Number.isFinite(lat) && Math.abs(lat) <= 90 &&
+  typeof lng === 'number' && Number.isFinite(lng) && Math.abs(lng) <= 180;
+export const validateLocation = (value: unknown): value is Location => {
+  if (!value || typeof value !== 'object') return false;
+  const location = value as Location;
+  return coordinate(location.lat, location.lng) && Number.isFinite(location.timestamp) &&
+    location.timestamp <= Date.now() + 5000 && Date.now() - location.timestamp <= MAX_LOCATION_AGE &&
+    (location.accuracy === undefined || (Number.isFinite(location.accuracy) && location.accuracy >= 0 && location.accuracy <= 100_000));
+};
+export function validateIdentity(socket: Socket): boolean {
+  const { userId, token } = socket.handshake.auth;
+  return typeof userId === 'string' && /^[A-Za-z0-9_-]{8,80}$/.test(userId) &&
+    typeof token === 'string' && /^[A-Za-z0-9_-]{32,128}$/.test(token);
+}
+export function registerSocketHandlers(io: Server, socket: Socket, store: RoomStore) {
+  const userId: string = socket.handshake.auth.userId;
+  const tokenHash = createHash('sha256').update(socket.handshake.auth.token).digest('hex');
+  let activeRoom: string | null = null;
+  let queue = Promise.resolve();
+  let lastLocationAt = 0;
+  let lastHeartbeatAt = 0;
+  const handle = (event: string, action: (data: any) => Promise<unknown>) => {
+    socket.on(event, (data: unknown, ack?: Ack) => {
+      queue = queue.then(async () => {
+        try {
+          if (!socket.connected) return;
+          const room = await action(data);
+          if (typeof ack === 'function') ack({ ok: true, ...(room ? { room } : {}) });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '요청을 처리하지 못했습니다.';
+          if (typeof ack === 'function') ack({ ok: false, message });
+          else socket.emit('room:error', { message });
+        }
+      });
+    });
+  };
+  const requireRoom = (data: any): string => {
+    if (!data || !validRoomId(data.roomId) || data.roomId !== activeRoom || !socket.rooms.has(data.roomId)) throw new Error('모임에 다시 연결해주세요.');
+    return data.roomId;
+  };
+  const makeMember = (data: any): StoredMember => {
+    if (!data || typeof data.nickname !== 'string' || !data.nickname.trim() || data.nickname.trim().length > 20) throw new Error('닉네임은 1~20자로 입력해주세요.');
+    if (typeof data.photoBase64 !== 'string' || data.photoBase64.length > 100_000 ||
+      (data.photoBase64 && !/^data:image\/(jpeg|png|webp|gif|svg\+xml);base64,/.test(data.photoBase64))) throw new Error('프로필 사진 형식을 확인해주세요.');
+    return {
+      id: userId, socketId: socket.id, tokenHash, nickname: data.nickname.trim(),
+      photoBase64: data.photoBase64, location: null, isSharing: data.isSharing === true,
+      isOnline: true, joinedAt: Date.now(), lastSeenAt: Date.now(),
     };
-
-    roomStore.upsertMember(roomId, member);
-    cancelCleanup(roomStore, roomId); // Room is active, cancel any cleanup timer
-    
-    socket.join(roomId);
-    
-    const members = roomStore.getRoomMembers(roomId);
-    
-    // Broadcast the full updated member list to EVERYONE in the room
-    io.in(roomId).emit(events.MEMBER_LIST, members);
-    socket.to(roomId).emit(events.MEMBER_JOINED, member);
-    
-    console.log(`[Room Join] ${nickname} (User: ${userId}, Socket: ${socket.id}) joined ${roomId}. Total members: ${members.length}`);
-  });
-
-  socket.on(events.LOCATION_UPDATE, (data: { roomId?: string; lat: number; lng: number; accuracy?: number; timestamp: number }) => {
-    let targetRooms: string[] = [];
-    if (data.roomId && roomStore.roomExists(data.roomId)) {
-      targetRooms = [data.roomId];
-      if (!socket.rooms.has(data.roomId)) {
-        socket.join(data.roomId);
-      }
-    } else {
-      targetRooms = Array.from(socket.rooms).filter(r => r !== socket.id);
-    }
-
-    for (const roomId of targetRooms) {
-      const updatedMember = roomStore.updateLocation(roomId, socket.id, data);
-      if (updatedMember) {
-        socket.to(roomId).emit(events.LOCATION_UPDATE, {
-          memberId: updatedMember.id, // Broadcast persistent member userId
-          location: {
-            lat: data.lat,
-            lng: data.lng,
-            accuracy: data.accuracy,
-            timestamp: data.timestamp,
-          },
-        });
-      }
-    }
-  });
-
-  socket.on(events.LOCATION_TOGGLE, (data: { roomId?: string; isSharing: boolean }) => {
-    let targetRooms: string[] = [];
-    if (data.roomId && roomStore.roomExists(data.roomId)) {
-      targetRooms = [data.roomId];
-    } else {
-      targetRooms = Array.from(socket.rooms).filter(r => r !== socket.id);
-    }
-
-    for (const roomId of targetRooms) {
-      const updatedMember = roomStore.toggleSharing(roomId, socket.id, data.isSharing);
-      if (updatedMember) {
-        socket.to(roomId).emit(events.LOCATION_TOGGLE, {
-          memberId: updatedMember.id,
-          isSharing: data.isSharing,
-        });
-      }
-    }
-  });
-
-  // Explicit leave: User manually clicks "나가기 (Leave)"
-  const handleExplicitLeave = (roomId: string) => {
-    const member = roomStore.getRoomMembers(roomId).find(m => m.socketId === socket.id);
-    const userId = member?.id || socket.id;
-
-    if (roomStore.removeMemberExplicitly(roomId, socket.id)) {
-      socket.leave(roomId);
-      socket.to(roomId).emit(events.MEMBER_LEFT, { memberId: userId });
-      
-      const remainingMembers = roomStore.getRoomMembers(roomId);
-      io.in(roomId).emit(events.MEMBER_LIST, remainingMembers);
-
-      console.log(`[Explicit Leave] User ${userId} left room ${roomId}. Remaining: ${remainingMembers.length}`);
-      
-      // Only schedule cleanup if literally EVERY member has explicitly left (0 members remain)
-      if (roomStore.isEmpty(roomId)) {
-        scheduleCleanup(roomStore, roomId);
-        console.log(`[Room Empty] All members explicitly left room ${roomId}. 24-hour retention scheduled.`);
-      }
+  };
+  const leavePrevious = async (next?: string) => {
+    if (activeRoom && activeRoom !== next) {
+      const oldId = activeRoom;
+      await socket.leave(oldId);
+      const previous = await store.setOffline(oldId, userId, socket.id);
+      if (previous) io.to(oldId).emit('room:state', previous);
+      activeRoom = null;
     }
   };
-
-  socket.on(events.ROOM_LEAVE, (data: { roomId: string }) => {
-    handleExplicitLeave(data.roomId);
+  handle('room:create', async data => {
+    const member = makeMember(data);
+    await leavePrevious();
+    const room = await store.createRoom(member);
+    activeRoom = room.id; await socket.join(room.id);
+    return room;
   });
-
-  // Disconnect: socket disconnected (tab closed, reload, screen lock, background)
-  // We mark member offline instead of deleting, keeping the room and member completely intact!
-  socket.on('disconnecting', () => {
-    const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
-    for (const roomId of rooms) {
-      const offlineMember = roomStore.setMemberOffline(roomId, socket.id);
-      if (offlineMember) {
-        const members = roomStore.getRoomMembers(roomId);
-        // Inform peers that this member is temporarily offline, but DO NOT delete room
-        io.in(roomId).emit(events.MEMBER_LIST, members);
-        console.log(`[Socket Offline] User ${offlineMember.nickname} (${offlineMember.id}) offline in room ${roomId}. Room preserved.`);
-      }
-    }
+  handle('room:join', async data => {
+    if (!data || !validRoomId(data.roomId)) throw new Error('초대 링크가 올바르지 않습니다.');
+    const member = makeMember(data);
+    await leavePrevious(data.roomId);
+    const room = await store.joinRoom(data.roomId, member);
+    activeRoom = room.id; await socket.join(room.id);
+    io.to(room.id).emit('room:state', room);
+    return room;
   });
-
+  handle('location:toggle', async data => {
+    const id = requireRoom(data);
+    if (typeof data.isSharing !== 'boolean') throw new Error('공유 상태를 확인해주세요.');
+    const room = await store.toggleSharing(id, userId, socket.id, data.isSharing);
+    io.to(id).emit('room:state', room);
+    return room;
+  });
+  handle('location:update', async data => {
+    const id = requireRoom(data);
+    if (!validateLocation(data.location)) throw new Error('오래되었거나 올바르지 않은 위치입니다.');
+    if (Date.now() - lastLocationAt < 1000) return;
+    lastLocationAt = Date.now();
+    const updated = await store.updateLocation(id, userId, socket.id, data.location);
+    if (updated) io.to(id).emit('location:update', { roomId: id, revision: updated.revision, memberId: userId, location: updated.member.location, lastSeenAt: updated.member.lastSeenAt });
+  });
+  handle('member:heartbeat', async data => {
+    const id = requireRoom(data);
+    if (Date.now() - lastHeartbeatAt < 10_000) return;
+    lastHeartbeatAt = Date.now();
+    const updated = await store.heartbeat(id, userId, socket.id);
+    io.to(id).emit('member:presence', { roomId: id, memberId: userId, revision: updated.revision, lastSeenAt: updated.member.lastSeenAt });
+  });
+  handle('room:meeting-point', async data => {
+    const id = requireRoom(data);
+    const point: MeetingPoint | null = data.point;
+    if (point !== null && (!point || !coordinate(point.lat, point.lng) || typeof point.label !== 'string' || !point.label.trim() || point.label.length > 40)) throw new Error('만날 장소 이름과 위치를 확인해주세요.');
+    const room = await store.setMeetingPoint(id, userId, socket.id, point);
+    io.to(id).emit('room:state', room); return room;
+  });
+  handle('room:leave', async data => {
+    const id = requireRoom(data);
+    const room = await store.leaveRoom(id, userId, socket.id);
+    await socket.leave(id); activeRoom = null; io.to(id).emit('room:state', room);
+  });
   socket.on('disconnect', () => {
-    console.log(`[Disconnect] Socket ${socket.id} closed.`);
+    queue = queue.then(async () => {
+      if (!activeRoom) return;
+      const id = activeRoom; activeRoom = null;
+      const room = await store.setOffline(id, userId, socket.id);
+      if (room) io.to(id).emit('room:state', room);
+    }).catch(error => console.error('Failed to update disconnected participant', error instanceof Error ? error.message : 'Unknown error'));
   });
+  return () => queue;
 }

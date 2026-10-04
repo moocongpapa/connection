@@ -1,0 +1,31 @@
+name: Verify
+on: [push, pull_request]
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7.4
+        ports: [6379:6379]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+            server/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix server
+      - run: npm ci --prefix client
+      - run: npm test
+        env:
+          TEST_REDIS_URL: redis://127.0.0.1:6379
+      - run: npm run build

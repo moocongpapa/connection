@@ -1,60 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import ProfileSetup from '../Profile/ProfileSetup';
-import { useRoomContext } from '../../contexts/RoomContext';
-import { ProfileData } from '../../types';
 import ThemeToggle from '../UI/ThemeToggle';
+import { useRoomContext } from '../../contexts/RoomContext';
+import { useSocketContext } from '../../contexts/SocketContext';
 
-const JoinRoom: React.FC = () => {
-  const { roomId } = useParams<{ roomId: string }>();
-  const navigate = useNavigate();
-  const { joinRoom, room, error: roomError } = useRoomContext();
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (room && room.id === roomId) {
-      // Already in room, could happen if user navigated back
-      navigate(`/room/${roomId}`);
-    }
-  }, [room, roomId, navigate]);
-
-  const handleProfileSubmit = (profile: ProfileData) => {
-    if (!roomId) {
-      setError('유효하지 않은 링크입니다.');
-      return;
-    }
-    joinRoom(roomId, profile);
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-900 dark:to-gray-800 flex flex-col">
-      <div className="absolute top-4 right-4">
-        <ThemeToggle />
-      </div>
-
-      <div className="flex-1 flex flex-col items-center justify-center p-4">
-        <div className="mb-6 text-center">
-          <div className="w-16 h-16 bg-primary-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">모임 참여하기</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">초대받은 모임에 입장하려면 프로필을 설정해주세요.</p>
-        </div>
-
-        <div className="w-full">
-          <ProfileSetup onSubmit={handleProfileSubmit} buttonText="참여하기" />
-          
-          {(error || roomError) && (
-            <p className="text-red-500 text-center mt-4 bg-red-100 dark:bg-red-900/30 p-3 rounded-lg max-w-md mx-auto">
-              {error || roomError}
-            </p>
-          )}
-        </div>
-      </div>
+export default function JoinRoom() {
+  const { roomId } = useParams();
+  const { joinRoom, error, isJoining } = useRoomContext();
+  const { isConnected, connectionError } = useSocketContext();
+  return <main className="onboarding-page">
+    <div className="w-full max-w-md mx-auto">
+      <div className="flex items-center justify-between mb-5"><Link className="touch-button text-sm" to="/">← 처음으로</Link><ThemeToggle /></div>
+      <h1 className="text-2xl font-bold text-center">모임 참여하기</h1>
+      <p className="text-center text-sm text-gray-500 mt-2 mb-5">닉네임으로 참여하세요. 사진은 선택 사항입니다.</p>
+      <ProfileSetup onSubmit={profile => roomId && void joinRoom(roomId, profile)} buttonText="참여하기" pending={isJoining} connected={isConnected} />
+      {(error || connectionError) && <p role="alert" className="text-red-600 dark:text-red-300 text-sm mt-4">{error || connectionError}</p>}
+      <p className="text-xs text-gray-500 mt-4 leading-relaxed">참여 후 위치 공유를 직접 켤 수 있습니다. 위치가 확인되지 않으면 Safari 또는 Chrome으로 열어주세요.</p>
     </div>
-  );
-};
-
-export default JoinRoom;
+  </main>;
+}

@@ -1,178 +1,108 @@
 import { nanoid } from 'nanoid';
+import type { RoomRepository } from './RoomRepository.js';
 
-export interface Location {
-  lat: number;
-  lng: number;
-  accuracy?: number;
-  timestamp: number;
-}
-
+export interface Location { lat: number; lng: number; accuracy?: number; timestamp: number }
+export interface MeetingPoint { lat: number; lng: number; label: string }
 export interface Member {
-  id: string;           // userId (persistent client identifier)
-  socketId: string;     // active Socket.IO connection id
-  nickname: string;
-  photoBase64: string;  // profile photo
-  location: Location | null;
-  isSharing: boolean;   // location sharing toggle
-  isOnline: boolean;    // connection status
-  joinedAt: number;
-  lastUpdate: number;
+  id: string; nickname: string; photoBase64: string; location: Location | null;
+  isSharing: boolean; isOnline: boolean; joinedAt: number; lastSeenAt: number;
 }
-
-export interface Room {
-  id: string;           // nanoid generated
-  members: Map<string, Member>; // Map<userId, Member>
-  createdAt: number;
-  cleanupTimer: ReturnType<typeof setTimeout> | null;
+export interface StoredMember extends Member { socketId: string; tokenHash: string }
+export interface StoredRoom {
+  id: string; creatorId: string; members: Record<string, StoredMember>;
+  meetingPoint: MeetingPoint | null; createdAt: number; expiresAt: number; revision: number;
 }
+export interface Room extends Omit<StoredRoom, 'members'> { members: Member[] }
+export const ROOM_TTL = 24 * 60 * 60 * 1000;
+export const PRESENCE_TTL = 60_000;
+export const MAX_LOCATION_AGE = 60_000;
+export const publicMember = (member: StoredMember): Member => ({
+  id: member.id, nickname: member.nickname, photoBase64: member.photoBase64,
+  location: member.isSharing ? member.location : null, isSharing: member.isSharing,
+  isOnline: member.isOnline && Date.now() - member.lastSeenAt < PRESENCE_TTL,
+  joinedAt: member.joinedAt, lastSeenAt: member.lastSeenAt,
+});
+export const publicRoom = (room: StoredRoom): Room => ({
+  id: room.id, creatorId: room.creatorId, members: Object.values(room.members).map(publicMember),
+  meetingPoint: room.meetingPoint, createdAt: room.createdAt, expiresAt: room.expiresAt, revision: room.revision,
+});
 
 export class RoomStore {
-  private rooms: Map<string, Room> = new Map();
-
-  createRoom(): Room {
-    const id = nanoid(8);
-    const room: Room = {
-      id,
-      members: new Map(),
-      createdAt: Date.now(),
-      cleanupTimer: null,
+  constructor(private repository: RoomRepository) {}
+  async createRoom(member: StoredMember): Promise<Room> {
+    const now = Date.now();
+    const room: StoredRoom = {
+      id: nanoid(16), creatorId: member.id, members: { [member.id]: member },
+      meetingPoint: null, createdAt: now, expiresAt: now + ROOM_TTL, revision: 0,
     };
-    this.rooms.set(id, room);
-    return room;
+    await this.repository.create(room);
+    return publicRoom(room);
   }
-
-  getRoom(roomId: string): Room | undefined {
-    return this.rooms.get(roomId);
+  async getRoom(id: string): Promise<Room | null> {
+    const room = await this.repository.read(id);
+    return room ? publicRoom(room) : null;
   }
-
-  // Add or update member (keyed by userId)
-  upsertMember(roomId: string, member: Member): boolean {
-    const room = this.rooms.get(roomId);
-    if (!room) return false;
-
-    const existing = room.members.get(member.id);
-    if (existing) {
-      existing.socketId = member.socketId;
-      existing.nickname = member.nickname;
-      existing.photoBase64 = member.photoBase64;
-      existing.isOnline = true;
-      if (member.location) {
-        existing.location = member.location;
-      }
-      existing.lastUpdate = Date.now();
-      room.members.set(member.id, existing);
-    } else {
-      room.members.set(member.id, member);
-    }
-    return true;
+  async joinRoom(id: string, member: StoredMember): Promise<Room> {
+    const room = await this.repository.mutate(id, current => {
+      const existing = current.members[member.id];
+      if (existing && existing.tokenHash !== member.tokenHash) throw new Error('참여자 인증에 실패했습니다.');
+      current.members[member.id] = { ...member, joinedAt: existing?.joinedAt ?? member.joinedAt, location: null };
+      if (!current.members[current.creatorId]) current.creatorId = member.id;
+      if (Object.keys(current.members).length > 100) throw new Error('모임에는 최대 100명까지 참여할 수 있습니다.');
+    });
+    return publicRoom(room);
   }
-
-  // Set member offline (socket disconnected, but user has NOT intentionally left)
-  setMemberOffline(roomId: string, socketId: string): Member | null {
-    const room = this.rooms.get(roomId);
-    if (!room) return null;
-
-    for (const member of room.members.values()) {
-      if (member.socketId === socketId) {
-        member.isOnline = false;
-        member.lastUpdate = Date.now();
-        return member;
-      }
-    }
-    return null;
+  async updateLocation(id: string, userId: string, socketId: string, location: Location): Promise<{ member: Member; revision: number } | null> {
+    let updated: StoredMember | null = null;
+    const room = await this.repository.mutate(id, room => {
+      updated = null;
+      const member = room.members[userId];
+      if (!member || member.socketId !== socketId || !member.isSharing) return;
+      if (Date.now() - location.timestamp > MAX_LOCATION_AGE) return;
+      if (member.location && location.timestamp <= member.location.timestamp) return;
+      member.location = location; member.lastSeenAt = Date.now(); member.isOnline = true;
+      updated = member;
+    });
+    return updated ? { member: publicMember(updated), revision: room.revision } : null;
   }
-
-  // Explicitly remove member when user clicks "Leave Room"
-  removeMemberExplicitly(roomId: string, userIdOrSocketId: string): boolean {
-    const room = this.rooms.get(roomId);
-    if (!room) return false;
-
-    // Check by userId first
-    if (room.members.has(userIdOrSocketId)) {
-      return room.members.delete(userIdOrSocketId);
-    }
-
-    // Fallback: check by socketId
-    for (const [userId, member] of room.members.entries()) {
-      if (member.socketId === userIdOrSocketId) {
-        return room.members.delete(userId);
-      }
-    }
-    return false;
+  async toggleSharing(id: string, userId: string, socketId: string, isSharing: boolean): Promise<Room> {
+    return publicRoom(await this.repository.mutate(id, room => {
+      const member = this.requireMember(room, userId, socketId);
+      member.isSharing = isSharing; member.location = null; member.lastSeenAt = Date.now();
+    }));
   }
-
-  updateLocation(roomId: string, socketId: string, location: Location): Member | null {
-    const room = this.rooms.get(roomId);
-    if (!room) return null;
-
-    for (const member of room.members.values()) {
-      if (member.socketId === socketId) {
-        member.location = location;
-        member.isOnline = true;
-        member.lastUpdate = Date.now();
-        return member;
-      }
-    }
-    return null;
+  async heartbeat(id: string, userId: string, socketId: string) {
+    const room = await this.repository.mutate(id, room => {
+      const member = this.requireMember(room, userId, socketId);
+      member.lastSeenAt = Date.now(); member.isOnline = true;
+    });
+    return { member: publicMember(room.members[userId]), revision: room.revision };
   }
-
-  toggleSharing(roomId: string, socketId: string, isSharing: boolean): Member | null {
-    const room = this.rooms.get(roomId);
-    if (!room) return null;
-
-    for (const member of room.members.values()) {
-      if (member.socketId === socketId) {
-        member.isSharing = isSharing;
-        if (!isSharing) {
-          member.location = null;
-        }
-        member.lastUpdate = Date.now();
-        return member;
-      }
-    }
-    return null;
+  async setOffline(id: string, userId: string, socketId: string): Promise<Room | null> {
+    try {
+      return publicRoom(await this.repository.mutate(id, room => {
+        const member = room.members[userId];
+        if (member?.socketId === socketId) member.isOnline = false;
+      }, false));
+    } catch { return null; }
   }
-
-  getRoomMembers(roomId: string): Member[] {
-    const room = this.rooms.get(roomId);
-    if (!room) return [];
-    return Array.from(room.members.values());
+  async leaveRoom(id: string, userId: string, socketId: string): Promise<Room> {
+    return publicRoom(await this.repository.mutate(id, room => {
+      this.requireMember(room, userId, socketId);
+      delete room.members[userId];
+      if (room.creatorId === userId) room.creatorId = Object.keys(room.members)[0] ?? '';
+    }));
   }
-
-  deleteRoom(roomId: string): void {
-    const room = this.rooms.get(roomId);
-    if (room && room.cleanupTimer) {
-      clearTimeout(room.cleanupTimer);
-    }
-    this.rooms.delete(roomId);
+  async setMeetingPoint(id: string, userId: string, socketId: string, point: MeetingPoint | null): Promise<Room> {
+    return publicRoom(await this.repository.mutate(id, room => {
+      this.requireMember(room, userId, socketId);
+      if (room.creatorId !== userId) throw new Error('모임을 만든 사람만 만날 장소를 변경할 수 있습니다.');
+      room.meetingPoint = point;
+    }));
   }
-
-  setCleanupTimer(roomId: string, callback: () => void, delay: number): void {
-    const room = this.rooms.get(roomId);
-    if (!room) return;
-    if (room.cleanupTimer) {
-      clearTimeout(room.cleanupTimer);
-    }
-    room.cleanupTimer = setTimeout(callback, delay);
-  }
-
-  clearCleanupTimer(roomId: string): void {
-    const room = this.rooms.get(roomId);
-    if (!room) return;
-    if (room.cleanupTimer) {
-      clearTimeout(room.cleanupTimer);
-      room.cleanupTimer = null;
-    }
-  }
-
-  roomExists(roomId: string): boolean {
-    return this.rooms.has(roomId);
-  }
-
-  // Room is empty only if 0 members exist in the room
-  isEmpty(roomId: string): boolean {
-    const room = this.rooms.get(roomId);
-    if (!room) return true;
-    return room.members.size === 0;
+  private requireMember(room: StoredRoom, userId: string, socketId: string): StoredMember {
+    const member = room.members[userId];
+    if (!member || member.socketId !== socketId) throw new Error('모임에 다시 연결해주세요.');
+    return member;
   }
 }

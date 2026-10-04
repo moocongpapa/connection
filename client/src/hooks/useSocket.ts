@@ -1,43 +1,25 @@
 import { useEffect, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
+import { getIdentity } from '../utils/storage';
 
-let socketInstance: Socket | null = null;
-
-export const useSocket = () => {
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-
+export function useSocket() {
+  const [socket] = useState(() => io(import.meta.env.VITE_SERVER_URL || window.location.origin, {
+    autoConnect: false, transports: ['websocket'], path: '/socket.io',
+    auth: getIdentity(), reconnection: true, reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000, reconnectionDelayMax: 10000, timeout: 10000,
+  }));
+  const [isConnected, setConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   useEffect(() => {
-    if (!socketInstance) {
-      const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
-      socketInstance = io(serverUrl, {
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 20000,
-      });
-    }
-
-    setSocket(socketInstance);
-
-    const onConnect = () => setIsConnected(true);
-    const onDisconnect = () => setIsConnected(false);
-
-    socketInstance.on('connect', onConnect);
-    socketInstance.on('disconnect', onDisconnect);
-
-    if (socketInstance.connected) {
-      setIsConnected(true);
-    }
-
+    const connect = () => { setConnected(true); setConnectionError(null); };
+    const disconnect = () => setConnected(false);
+    const failure = (error: Error) => { setConnected(false); setConnectionError(error.message); };
+    socket.on('connect', connect); socket.on('disconnect', disconnect); socket.on('connect_error', failure);
+    socket.connect();
     return () => {
-      if (socketInstance) {
-        socketInstance.off('connect', onConnect);
-        socketInstance.off('disconnect', onDisconnect);
-      }
+      socket.off('connect', connect); socket.off('disconnect', disconnect); socket.off('connect_error', failure);
+      socket.disconnect();
     };
-  }, []);
-
-  return { socket, isConnected };
-};
+  }, [socket]);
+  return { socket, isConnected, connectionError };
+}
