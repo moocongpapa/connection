@@ -23,7 +23,7 @@
     }
   },
   "rewrites": [
-    { "source": "/socket.io/:path*", "destination": { "service": "api" } },
+    { "source": "/socket.io/:path*", "destination": { "service": "api", "path": "/socket.io/connect" } },
     { "source": "/api/:path*", "destination": { "service": "api" } },
     { "source": "/:path*", "destination": { "service": "web" } }
   ]

@@ -63,6 +63,8 @@ Redis 없이 개발하면 서버의 `.data/rooms.json`에 모임을 저장합니
 
 API 서비스의 `outputDirectory`는 `.`으로 유지합니다. Services 빌더가 `dist`를 함수 루트로 재배치하면 ES 모듈의 `package.json` 경계를 잃을 수 있으므로, `src/index.ts`를 기준으로 서버와 의존성을 패키징합니다.
 
+WebSocket rewrite의 `destination.path`는 `/socket.io/connect`로 고정합니다. Services의 함수 선택 단계에서 `/socket.io/`가 디렉터리 경로로 처리되는 404를 피하기 위한 설정입니다. 서버에는 원래 요청 경로가 전달되므로 Socket.IO 클라이언트의 기본 경로는 그대로 사용합니다.
+
 ### 3. 환경 변수 입력
 
 Vercel 프로젝트의 Environment Variables에 다음 값을 입력하고 배포합니다.
