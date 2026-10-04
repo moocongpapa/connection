@@ -8,9 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		A1000000000000000000000D /* Connection/AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000006 /* Connection/AppDelegate.swift */; };
+		A10000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A10000000000000000000015 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Connection/Assets.xcassets; sourceTree = "<group>"; };
 		A10000000000000000000014 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		A10000000000000000000006 /* Connection/AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Connection/AppDelegate.swift; sourceTree = "<group>"; };
 		A10000000000000000000007 /* Connection/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Connection/Info.plist; sourceTree = "<group>"; };
@@ -33,6 +35,7 @@
 			children = (
 				A10000000000000000000006 /* Connection/AppDelegate.swift */,
 				A10000000000000000000007 /* Connection/Info.plist */,
+				A10000000000000000000015 /* Assets.xcassets */,
 				A10000000000000000000014 /* Signing.xcconfig */,
 				A10000000000000000000004 /* Products */,
 			);
@@ -98,6 +101,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000016 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -141,6 +145,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A10000000000000000000014 /* Signing.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				INFOPLIST_FILE = Connection/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = app.moocongpapa.connection;
@@ -153,6 +158,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A10000000000000000000014 /* Signing.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				INFOPLIST_FILE = Connection/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = app.moocongpapa.connection;
