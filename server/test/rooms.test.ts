@@ -261,6 +261,9 @@ test('native grants expire and a new upload cannot revive a departed participant
   const first = await store.startNativeSharing(room.id, owner.id, owner.socketId);
   await repo.mutate(room.id, room => { room.members[owner.id].nativeGrant!.expiresAt = Date.now() - 1; });
   await assert.rejects(() => store.nativeUpdate(room.id, owner.id, first.session.uploadToken, position()));
+  const stopped = await store.nativeUpdate(room.id, owner.id, first.session.uploadToken, null);
+  assert.equal(stopped.room.members[0].isSharing, false);
+  await store.toggleSharing(room.id, owner.id, owner.socketId, true);
   const second = await store.startNativeSharing(room.id, owner.id, owner.socketId);
   await store.leaveRoom(room.id, owner.id, owner.socketId);
   await assert.rejects(() => store.nativeUpdate(room.id, owner.id, second.session.uploadToken, position()));

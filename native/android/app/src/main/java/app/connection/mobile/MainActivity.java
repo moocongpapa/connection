@@ -18,7 +18,7 @@ public final class MainActivity extends Activity {
     private JavaScriptReplyProxy reply;
     private JSONObject pending;
     private String pendingId, startingId;
-    private boolean foreground;
+    private boolean foreground, startOnResume;
     private static boolean trusted(Uri uri) {
         return uri != null && "https".equals(uri.getScheme()) && "connection-gray-sigma.vercel.app".equals(uri.getHost()) && (uri.getPort() == -1 || uri.getPort() == 443);
     }
@@ -98,12 +98,14 @@ public final class MainActivity extends Activity {
     }
     private void startSharing() {
         if (pending == null) return;
-        if (!foreground) { LocationService.revoke(pending); send(pendingId, false, "앱 화면에서 공유를 다시 켜주세요."); pending = null; pendingId = null; return; }
+        if (!foreground) { startOnResume = true; return; }
+        startOnResume = false;
         startingId = pendingId;
         startForegroundService(new Intent(this, LocationService.class).setAction("start").putExtra("session", pending.toString()));
         pending = null; pendingId = null;
     }
     private void stopSharing() {
+        startOnResume = false;
         if (pending != null) { LocationService.revoke(pending); send(pendingId, false, "공유 요청이 취소되었습니다."); pending = null; pendingId = null; }
         if (LocationService.active || startingId != null) startService(new Intent(this, LocationService.class).setAction("stop"));
     }
@@ -128,7 +130,7 @@ public final class MainActivity extends Activity {
             else Toast.makeText(this, "Connection 초대 링크를 확인해주세요.", Toast.LENGTH_LONG).show();
         }).show();
     }
-    @Override protected void onResume() { super.onResume(); foreground = true; if(web != null) web.onResume(); send(null, true, null); }
+    @Override protected void onResume() { super.onResume(); foreground = true; if (startOnResume) startSharing(); if(web != null) web.onResume(); send(null, true, null); }
     @Override protected void onPause() { foreground = false; super.onPause(); if(web != null) web.onPause(); }
     @Override protected void onDestroy() { LocationService.observer = null; reply = null; if(web != null) web.destroy(); super.onDestroy(); }
 }

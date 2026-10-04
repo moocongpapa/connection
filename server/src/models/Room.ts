@@ -113,7 +113,7 @@ export class RoomStore {
       changed = false;
       const member = room.members[userId];
       if (!member?.isSharing || !member.nativeGrant || member.nativeGrant.hash !== hash ||
-          member.nativeGrant.expiresAt <= Date.now()) throw new Error('Native sharing session expired');
+          (location && member.nativeGrant.expiresAt <= Date.now())) throw new Error('Native sharing session expired');
       if (!location) {
         member.isSharing = false; member.location = null; delete member.nativeGrant; changed = true; return;
       }
