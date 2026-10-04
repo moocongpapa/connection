@@ -13,6 +13,7 @@
       "root": "server",
       "framework": "express",
       "entrypoint": "src/index.ts",
+      "outputDirectory": ".",
       "installCommand": "npm ci",
       "buildCommand": "npm run build",
       "functions": { "src/index.ts": { "maxDuration": 300 } }

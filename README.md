@@ -61,6 +61,8 @@ Redis 없이 개발하면 서버의 `.data/rooms.json`에 모임을 저장합니
 
 서버는 HTTP 서버를 기본 export하며 Vercel에서는 직접 `listen()`하지 않습니다. 클라이언트와 서버 모두 WebSocket transport만 사용합니다. `/socket.io/*`와 `/api/*`는 API 서비스로, 나머지는 웹 서비스로 전달합니다. `/room/모임ID`를 새로고침해도 웹 서비스의 `index.html`로 연결합니다. [서비스 라우팅](https://vercel.com/docs/services/routing)
 
+API 서비스의 `outputDirectory`는 `.`으로 유지합니다. Services 빌더가 `dist`를 함수 루트로 재배치하면 ES 모듈의 `package.json` 경계를 잃을 수 있으므로, `src/index.ts`를 기준으로 서버와 의존성을 패키징합니다.
+
 ### 3. 환경 변수 입력
 
 Vercel 프로젝트의 Environment Variables에 다음 값을 입력하고 배포합니다.
