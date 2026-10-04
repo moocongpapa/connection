@@ -115,3 +115,7 @@ PWA는 앱 화면의 정적 파일만 캐시합니다. 위치 응답, 실시간 
 - `server/src/models`: TTL과 원자적 모임 저장
 - `server/src/socket/handlers.ts`: 인증·공유 상태 검사와 실시간 이벤트
 - `vercel.json`: 한 도메인으로 웹/API 서비스 배포
+
+## 개인용 iPhone·Android 시험 앱
+
+화면 잠금·다른 앱 사용 중 위치 공유를 위한 네이티브 앱과 설치 절차는 [native/README.md](native/README.md)에 있습니다. PWA의 백그라운드 제한은 그대로이며, 네이티브 앱을 별도로 설치해야 합니다. 무료 Apple 계정은 7일마다 재설치가 필요하고 Android APK는 `npm run build:android`로 만듭니다.

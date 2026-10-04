@@ -1,0 +1,2 @@
+// Optional per-developer settings; local file is ignored by Git.
+#include? "Signing.local.xcconfig"

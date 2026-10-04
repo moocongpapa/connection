@@ -7,7 +7,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import cors from 'cors';
 import { RoomStore } from './models/Room.js';
 import { FileRoomRepository, RedisRoomRepository, type RoomRepository } from './models/RoomRepository.js';
-import { registerSocketHandlers, validateIdentity } from './socket/handlers.js';
+import { registerSocketHandlers, validateIdentity, validateLocation } from './socket/handlers.js';
 
 export function createApplication(options: { repository?: RoomRepository; origins?: string[]; redisUrl?: string; namespace?: string } = {}) {
   const app = express();
@@ -67,6 +67,26 @@ export function createApplication(options: { repository?: RoomRepository; origin
       if (!room) return res.status(404).json({ message: '모임이 만료되었거나 존재하지 않습니다.' });
       res.json({ id: room.id, memberCount: room.members.length, expiresAt: room.expiresAt });
     } catch { res.status(503).json({ message: '서버 연결을 확인해주세요.' }); }
+  });
+  app.post('/api/native/:action', async (req, res) => {
+    const { roomId, userId, uploadToken, location } = req.body ?? {};
+    if (!['location', 'stop'].includes(req.params.action) ||
+        typeof roomId !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(roomId) ||
+        typeof userId !== 'string' || !/^[A-Za-z0-9_-]{8,80}$/.test(userId) ||
+        typeof uploadToken !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(uploadToken) ||
+        (req.params.action === 'location' && !validateLocation(location))) {
+      return res.status(400).json({ ok: false });
+    }
+    try {
+      await ready;
+      const result = await store.nativeUpdate(roomId, userId, uploadToken, req.params.action === 'stop' ? null : location);
+      if (result.changed) io.to(roomId).emit('room:state', result.room);
+      res.json({ ok: true, accepted: result.changed });
+    } catch (error) {
+      // Never log credentials, coordinates or request bodies.
+      const unauthorized = error instanceof Error && /session expired|만료|존재하지/.test(error.message);
+      res.status(unauthorized ? 403 : 503).json({ ok: false });
+    }
   });
   let closing: Promise<void> | null = null;
   const close = () => closing ??= (async () => {

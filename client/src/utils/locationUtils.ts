@@ -1,8 +1,11 @@
-import { Location } from '../types';
+import { Location, Member } from '../types';
 
 export const STALE_AFTER = 30_000;
 export const isFreshLocation = (location: Location | null, now = Date.now()) =>
   !!location && now - location.timestamp <= STALE_AFTER && location.timestamp <= now + 5000;
+export const isMemberLocationFresh = (member: Member, now = Date.now()) =>
+  !!member.location && member.location.timestamp <= now + 5000 &&
+  now - member.location.timestamp <= (member.backgroundSharing ? 5 * 60_000 : STALE_AFTER);
 export const calculateDistance = (loc1: Pick<Location, 'lat' | 'lng'>, loc2: Pick<Location, 'lat' | 'lng'>): number => {
   const radians = Math.PI / 180;
   const deltaLat = (loc2.lat - loc1.lat) * radians;

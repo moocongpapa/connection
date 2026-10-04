@@ -217,3 +217,51 @@ test('Redis shares state and broadcasts across servers, surviving an instance re
   const own = result.room.members.find((m: any) => m.id === alice.auth.userId);
   assert.equal(own.isSharing, false); assert.equal(own.location, null); assert.equal(own.isOnline, true);
 });
+
+test('native uploads survive socket loss but cannot bypass OFF, membership or grant rotation', async t => {
+  const app = await start(t);
+  const alice = await connect(t, app.url);
+  const roomId = (await request(alice.socket, 'room:create', { ...profile, isSharing: true })).room.id;
+  const first = (await request(alice.socket, 'native:start', { roomId })).room;
+  assert.match(first.uploadToken, /^[A-Za-z0-9_-]{43}$/);
+  const bob = await connect(t, app.url);
+  const joined = await request(bob.socket, 'room:join', { roomId, ...profile });
+  assert.equal(JSON.stringify(joined).includes(first.uploadToken), false);
+  assert.equal(JSON.stringify(joined).includes('nativeGrant'), false);
+  const post = (action: string, body: unknown) => fetch(app.url + '/api/native/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const latestGrant = (await request(alice.socket, 'native:start', { roomId })).room;
+  assert.equal((await post('location', { ...first, location: position() })).status, 403);
+  assert.equal((await post('location', { ...latestGrant, userId: bob.auth.userId, location: position() })).status, 403);
+  assert.equal((await post('location', { ...latestGrant, location: { ...position(), timestamp: Date.now() - 61_000 } })).status, 400);
+  const offline = event(bob.socket, 'room:state'); alice.socket.disconnect(); await offline;
+  const update = event(bob.socket, 'room:state', room => room.members.some((m: any) => m.id === alice.auth.userId && m.location));
+  const response = await post('location', { ...latestGrant, location: position() });
+  assert.equal(response.status, 200); assert.equal((await response.json()).accepted, true);
+  const own = (await update).members.find((m: any) => m.id === alice.auth.userId);
+  assert.equal(own.isOnline, false); assert.equal(own.backgroundSharing, true);
+  assert.equal((await (await post('location', { ...latestGrant, location: position() })).json()).accepted, false);
+  const resumed = await connect(t, app.url, alice.auth);
+  const restored = await request(resumed.socket, 'room:join', { roomId, ...profile, isSharing: true });
+  assert.equal(restored.room.members.find((m: any) => m.id === alice.auth.userId).backgroundSharing, true);
+  assert.ok(restored.room.members.find((m: any) => m.id === alice.auth.userId).location);
+  assert.equal((await post('stop', latestGrant)).status, 200);
+  assert.equal((await post('location', { ...latestGrant, location: position() })).status, 403);
+  const member = (await app.store.getRoom(roomId))!.members.find(m => m.id === alice.auth.userId)!;
+  assert.equal(member.isSharing, false); assert.equal(member.location, null); assert.equal(member.backgroundSharing, false);
+  await request(resumed.socket, 'location:toggle', { roomId, isSharing: true });
+  const grant = (await request(resumed.socket, 'native:start', { roomId })).room;
+  await request(resumed.socket, 'location:toggle', { roomId, isSharing: false });
+  assert.equal((await post('location', { ...grant, location: position() })).status, 403);
+});
+
+test('native grants expire and a new upload cannot revive a departed participant', async () => {
+  const repo = new FileRoomRepository(null); const store = new RoomStore(repo);
+  const owner = member(); owner.isSharing = true;
+  const room = await store.createRoom(owner);
+  const first = await store.startNativeSharing(room.id, owner.id, owner.socketId);
+  await repo.mutate(room.id, room => { room.members[owner.id].nativeGrant!.expiresAt = Date.now() - 1; });
+  await assert.rejects(() => store.nativeUpdate(room.id, owner.id, first.session.uploadToken, position()));
+  const second = await store.startNativeSharing(room.id, owner.id, owner.socketId);
+  await store.leaveRoom(room.id, owner.id, owner.socketId);
+  await assert.rejects(() => store.nativeUpdate(room.id, owner.id, second.session.uploadToken, position()));
+});

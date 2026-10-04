@@ -25,3 +25,15 @@ client/vite.config.d.ts
 # Logs
 *.log
 npm-debug.log*
+
+# Native build caches and personal signing
+.gradle/
+local.properties
+xcuserdata/
+*.xcuserstate
+*.ipa
+*.apk
+*.aab
+*.keystore
+*.jks
+native/ios/Signing.local.xcconfig

@@ -3,7 +3,7 @@ import { useRoomContext } from '../../contexts/RoomContext';
 import { directionsUrl, isFreshLocation } from '../../utils/locationUtils';
 
 export default function RoomTools() {
-  const { room, isCreator, myLocation, chooseMeetingPoint, pickingPoint, setPickingPoint, precision, setPrecision, panToLocation, keepScreen, setKeepScreen, wake } = useRoomContext();
+  const { room, isCreator, myLocation, chooseMeetingPoint, pickingPoint, setPickingPoint, precision, setPrecision, panToLocation, keepScreen, setKeepScreen, wake, isNative } = useRoomContext();
   const [label, setLabel] = useState('');
   const point = room?.meetingPoint;
   return <div className="space-y-4 border-t border-gray-100 dark:border-gray-700 pt-4">
@@ -28,19 +28,19 @@ export default function RoomTools() {
         {pickingPoint && <button type="button" className="touch-button text-sm" onClick={() => setPickingPoint(null)}>장소 선택 취소</button>}
       </div>}
     </div>
-    <div>
+    {!isNative && <div>
       <label htmlFor="location-precision" className="font-semibold block mb-2">위치 모드</label>
       <select id="location-precision" className="form-input" value={precision} onChange={event => setPrecision(event.target.value as 'precise' | 'balanced')}>
         <option value="precise">정확도 우선</option><option value="balanced">절전 우선</option>
       </select>
       <p className="text-xs text-gray-500 mt-2">절전 모드에서는 위치가 덜 정확할 수 있어요. 지도와 목록에서 정확도를 확인하세요.</p>
-    </div>
-    {wake.supported && <div>
+    </div>}
+    {!isNative && wake.supported && <div>
       <button type="button" role="switch" aria-checked={keepScreen} className="touch-button text-sm w-full justify-between"
         onClick={() => setKeepScreen(value => !value)}><span>공유 중 화면 켜두기</span><span>{keepScreen ? wake.active ? '사용 중' : '대기 중' : '꺼짐'}</span></button>
       <p className="text-xs text-gray-500">화면 유지 기능은 배터리를 더 사용합니다.</p>
       {wake.error && <p role="status" className="text-xs text-amber-600 mt-2">{wake.error}</p>}
     </div>}
-    <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">화면을 잠그거나 다른 앱을 사용하면 위치 갱신이 멈출 수 있어요. 다시 돌아오면 새 위치를 확인합니다. 메신저 안에서 위치가 안 잡히면 Safari 또는 Chrome으로 열어주세요.</p>
+    <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{isNative ? '공유를 켠 동안 화면 잠금·다른 앱 사용 중에도 위치를 전송합니다. 앱 강제 종료, 권한 해제, 절전 제한으로 중단될 수 있습니다. 앱 위쪽의 공유 중지 버튼으로 즉시 멈출 수 있어요.' : '화면을 잠그거나 다른 앱을 사용하면 위치 갱신이 멈출 수 있어요. 다시 돌아오면 새 위치를 확인합니다. 메신저 안에서 위치가 안 잡히면 Safari 또는 Chrome으로 열어주세요.'}</p>
   </div>;
 }

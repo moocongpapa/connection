@@ -1,13 +1,13 @@
 import { AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
 import type { Member } from '../../types';
 import { useClock } from '../../hooks/usePageVisibility';
-import { formatLocationAge, isFreshLocation } from '../../utils/locationUtils';
+import { formatLocationAge, isMemberLocationFresh } from '../../utils/locationUtils';
 
 export default function UserMarker({ member }: { member: Member }) {
   const map = useMap();
   const now = useClock();
   if (!member.isSharing || !member.location) return null;
-  const fresh = member.isOnline && isFreshLocation(member.location, now);
+  const fresh = (member.isOnline || member.backgroundSharing) && isMemberLocationFresh(member, now);
   return <AdvancedMarker position={{ lat: member.location.lat, lng: member.location.lng }}
     onClick={() => { map?.panTo(member.location!); map?.setZoom(17); }} zIndex={fresh ? 10 : 1}
     title={member.nickname + ' · ' + formatLocationAge(member.location.timestamp, now)}>

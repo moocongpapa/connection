@@ -3,6 +3,7 @@ export interface MeetingPoint { lat: number; lng: number; label: string }
 export interface Member {
   id: string; nickname: string; photoBase64: string; location: Location | null;
   isSharing: boolean; isOnline: boolean; joinedAt: number; lastSeenAt: number;
+  backgroundSharing?: boolean;
 }
 export interface Room {
   id: string; creatorId: string; members: Member[]; meetingPoint: MeetingPoint | null;

@@ -3,7 +3,7 @@ import { AdvancedMarker, APIProvider, Map, useMap } from '@vis.gl/react-google-m
 import { useRoomContext } from '../../contexts/RoomContext';
 import UserMarker from './UserMarker';
 import MapControls, { mapPadding } from './MapControls';
-import { isFreshLocation } from '../../utils/locationUtils';
+import { isFreshLocation, isMemberLocationFresh } from '../../utils/locationUtils';
 
 function MapController() {
   const map = useMap();
@@ -11,7 +11,7 @@ function MapController() {
   const initialized = useRef(false);
   useEffect(() => {
     if (!map || initialized.current) return;
-    const positions = members.filter(member => member.isSharing && isFreshLocation(member.location)).map(member => member.location!);
+    const positions = members.filter(member => member.isSharing && isMemberLocationFresh(member)).map(member => member.location!);
     if (!positions.length) return;
     const bounds = new google.maps.LatLngBounds();
     positions.forEach(position => bounds.extend(position));

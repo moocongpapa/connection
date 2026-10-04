@@ -87,6 +87,12 @@ export function registerSocketHandlers(io: Server, socket: Socket, store: RoomSt
     io.to(id).emit('room:state', room);
     return room;
   });
+  handle('native:start', async data => {
+    const id = requireRoom(data);
+    const result = await store.startNativeSharing(id, userId, socket.id);
+    io.to(id).emit('room:state', result.room);
+    return result.session;
+  });
   handle('location:update', async data => {
     const id = requireRoom(data);
     if (!validateLocation(data.location)) throw new Error('오래되었거나 올바르지 않은 위치입니다.');

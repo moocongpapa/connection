@@ -4,16 +4,16 @@ import { useClock } from '../../hooks/usePageVisibility';
 import { isFreshLocation } from '../../utils/locationUtils';
 
 export default function LocationToggle() {
-  const { wantsSharing, toggleSharing, myLocation, locationStatus, locationError, retryLocation, visible, isRoomReady, serverSharing } = useRoomContext();
+  const { wantsSharing, toggleSharing, myLocation, locationStatus, locationError, retryLocation, visible, isRoomReady, serverSharing, isNative, nativeActive } = useRoomContext();
   const { isConnected } = useSocketContext();
   const now = useClock();
   const labels = { idle: '위치 공유 꺼짐', requesting: '위치 확인 중', live: '위치 공유 중',
     denied: '위치 권한 필요', unavailable: '위치 확인 불가', timeout: '위치 확인 지연',
     unsupported: '위치 공유 미지원', insecure: '안전한 연결 필요' };
   const fresh = isFreshLocation(myLocation, now);
-  const label = !wantsSharing ? '위치 공유 꺼짐' : !isConnected || !isRoomReady ? '다시 연결하는 중' :
+  const label = !wantsSharing ? '위치 공유 꺼짐' : isNative && nativeActive ? locationStatus === 'live' ? '백그라운드 위치 공유 중' : '위치 확인 중' : !isConnected || !isRoomReady ? '다시 연결하는 중' :
     !visible ? '화면 복귀 후 다시 공유' : locationStatus === 'live' && !fresh ? '위치 갱신 지연' : labels[locationStatus];
-  const live = wantsSharing && isConnected && isRoomReady && visible && locationStatus === 'live' && fresh;
+  const live = wantsSharing && (isNative ? nativeActive && locationStatus === 'live' : isConnected && isRoomReady && visible && locationStatus === 'live' && fresh);
   return <div className="location-status">
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2 min-w-0" role="status" aria-live="polite">
@@ -31,6 +31,7 @@ export default function LocationToggle() {
       <p>{locationError}</p>
       <button type="button" className="touch-button mt-1 text-primary-600 dark:text-primary-300 font-semibold" onClick={retryLocation}>위치 다시 확인</button>
     </div>}
+    {isNative && <p className="text-xs text-gray-500">화면을 꺼도 위치를 공유합니다. 약 2분 간격으로 전송하며, 이동·기기 상태에 따라 늦어질 수 있어요. 최대 8시간 뒤 자동 종료됩니다.</p>}
     {!wantsSharing && <p className="text-xs text-gray-500 dark:text-gray-400">켜면 이 모임의 참여자에게 내 위치가 공유됩니다.</p>}
     {!wantsSharing && !isConnected && <p className="text-xs text-amber-700 mt-1">이 기기의 전송은 중지됐습니다. 다시 연결하면 모임 지도에서도 숨깁니다.</p>}
     {!wantsSharing && isConnected && serverSharing && <div className="text-xs text-amber-700 mt-1">

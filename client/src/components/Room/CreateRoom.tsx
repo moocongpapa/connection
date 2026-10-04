@@ -13,7 +13,7 @@ export default function CreateRoom() {
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
   const navigate = useNavigate();
-  const { createRoom, isJoining, room } = useRoomContext();
+  const { createRoom, isJoining, room, isNative } = useRoomContext();
   const { isConnected } = useSocketContext();
   const recent = getRecentRooms().filter(item => Date.now() - item.visitedAt < 86400000);
   const submit = async (profile: ProfileData) => {
@@ -38,8 +38,8 @@ export default function CreateRoom() {
             <span>모임 다시 열기</span><span className="text-xs text-gray-500">{new Date(item.visitedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
           </Link></li>)}</ul>
         </div>}
-        <PwaInstall />
-        <p className="text-xs text-gray-500 leading-relaxed text-center">내 위치는 공유를 켠 뒤에만 참여자에게 전달됩니다.<br />화면 잠금이나 앱 전환 중에는 위치 갱신이 멈출 수 있어요.</p>
+        {!isNative && <PwaInstall />}
+        <p className="text-xs text-gray-500 leading-relaxed text-center">내 위치는 공유를 켠 뒤에만 참여자에게 전달됩니다.<br />{isNative ? '공유 중에는 화면을 꺼도 위치를 전송합니다. 최대 8시간 뒤 자동 종료됩니다.' : '화면 잠금이나 앱 전환 중에는 위치 갱신이 멈출 수 있어요.'}</p>
       </div> : <>
         <button type="button" className="touch-button mb-2 text-sm" onClick={() => setStep('intro')}>← 처음으로</button>
         <ProfileSetup onSubmit={profile => void submit(profile)} buttonText="모임 시작하기" pending={isJoining} connected={isConnected} />
