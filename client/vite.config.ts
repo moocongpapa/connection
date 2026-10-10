@@ -16,6 +16,22 @@ export default defineConfig({
         { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
         { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
       ],
+      shortcuts: [
+        {
+          name: '모임 만들기',
+          short_name: '만들기',
+          description: '새로운 위치 공유 모임을 생성합니다.',
+          url: '/',
+          icons: [{ src: '/icon-192.png', sizes: '192x192' }],
+        },
+        {
+          name: '초대 코드로 참여',
+          short_name: '참여하기',
+          description: '초대 링크 또는 코드로 모임에 참여합니다.',
+          url: '/?action=join',
+          icons: [{ src: '/icon-192.png', sizes: '192x192' }],
+        },
+      ],
     },
     workbox: {
       navigateFallback: '/index.html', navigateFallbackDenylist: [/^\/api(?:\/|$)/, /^\/socket\.io(?:\/|$)/],

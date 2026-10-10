@@ -17,8 +17,15 @@ export default function ShareLink() {
   };
   const share = async () => {
     if (!navigator.share) { await copy(); return; }
-    try { await navigator.share({ title: 'Connection 모임 초대', text: '모임에 참여해 서로의 위치를 확인하세요.', url }); }
-    catch (error) { if ((error as DOMException).name !== 'AbortError') await copy(); }
+    try {
+      await navigator.share({
+        title: 'Connection 모임 초대',
+        text: `모임에 참여해 서로의 위치를 확인하세요.\n모임 코드: ${room.id}\n초대 링크: ${url}`,
+        url,
+      });
+    } catch (error) {
+      if ((error as DOMException).name !== 'AbortError') await copy();
+    }
   };
   return <div>
     <div className="flex items-center gap-2 min-w-0">
